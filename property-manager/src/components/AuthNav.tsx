@@ -42,7 +42,7 @@ export default function AuthNav() {
     <header className="border-b p-4">
       <div className="mx-auto max-w-5xl flex items-center justify-between">
         <Link href="/" className="font-semibold">
-          Property Manager
+          SimmoProp
         </Link>
         <nav className="flex items-center gap-4">
           {user ? (
