@@ -203,7 +203,7 @@ export default async function PropertyDetailsPage(props: {
                     <tr key={tx.id} className="align-middle">
                       <td className="py-3 pr-4 text-slate-200">
                         {tx.date
-                          ? new Date(tx.date).toLocaleDateString()
+                          ? new Date(tx.date + "T00:00:00").toLocaleDateString()
                           : "—"}
                       </td>
                       <td
