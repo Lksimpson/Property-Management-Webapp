@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/src/lib/supabase/server";
+import TransactionActions from "@/src/components/TransactionActions";
 
 type Property = {
   id: string;
@@ -192,6 +193,9 @@ export default async function PropertyDetailsPage(props: {
                     <th className="py-3 pr-4">Counterparty</th>
                     <th className="py-3 pr-4">Description</th>
                     <th className="py-3 pr-4 text-right">Amount</th>
+                    {canManageTransactions && (
+                      <th className="py-3 pr-4 text-right">Actions</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/70">
@@ -226,6 +230,21 @@ export default async function PropertyDetailsPage(props: {
                           currency: tx.currency || "USD",
                         })}
                       </td>
+                      {canManageTransactions && (
+                        <td className="py-3 pr-4 text-right">
+                          <TransactionActions
+                            transactionId={tx.id}
+                            propertyId={propertyId}
+                            transactionDescription={
+                              tx.description ||
+                              `${tx.type === "income" ? "Income" : "Expense"}: ${tx.amount.toLocaleString(undefined, {
+                                style: "currency",
+                                currency: tx.currency || "USD",
+                              })}`
+                            }
+                          />
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
