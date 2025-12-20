@@ -4,5 +4,7 @@ import { createSupabaseServerClient } from "@/src/lib/supabase/server";
 export async function GET() {
   const supabase = createSupabaseServerClient();
   await supabase.auth.signOut();
-  return NextResponse.redirect(new URL("/login", process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"));
+  // Use a relative redirect to avoid sending users to a hardcoded origin
+  // (which can be localhost in dev env vars) — keeps the redirect on the same host.
+  return NextResponse.redirect('/login');
 }
