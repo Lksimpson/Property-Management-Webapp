@@ -110,7 +110,7 @@ export default async function PropertyDetailsPage(props: {
     .order("date", { ascending: false });
 
   // Get recent 10 transactions for the table
-  const transactions = allTransactions.slice(0, 10);
+  const transactions = (allTransactions ?? []).slice(0, 10);
 
   // Fetch currency rates (get the most recent rate for each currency pair)
   const { data: currencyRates = [] } = await supabase
@@ -123,7 +123,7 @@ export default async function PropertyDetailsPage(props: {
   // Build a map for quick lookup: { "JMD-USD": 0.0062, "XCD-USD": 0.37, etc. }
   // Only keep the most recent rate for each pair (since we ordered DESC)
   const rateMap = new Map<string, number>();
-  currencyRates.forEach((rate) => {
+  (currencyRates ?? []).forEach((rate) => {
     const key = `${rate.base_currency}-${rate.target_currency}`;
     // Only set if not already in map (since we're processing from most recent to oldest)
     if (!rateMap.has(key)) {
@@ -187,7 +187,7 @@ export default async function PropertyDetailsPage(props: {
         {/* Monthly Income vs Expenses Chart */}
         <section className="mb-8">
           <MonthlyIncomeExpensesChart
-            transactions={allTransactions as Transaction[]}
+            transactions={(allTransactions ?? []) as Transaction[]}
             currencyRates={rateMap}
           />
         </section>
