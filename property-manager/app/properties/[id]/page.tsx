@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/src/lib/supabase/server";
 import TransactionTable from "@/src/components/TransactionTable";
+import MonthlyIncomeExpensesChart from "@/src/components/MonthlyIncomeExpensesChart";
 
 export const dynamic = "force-dynamic";
 
@@ -99,15 +100,17 @@ export default async function PropertyDetailsPage(props: {
   const canEditProperty = role === "manager" || role === "owner";
   const canDeleteProperty = role === "owner";
 
-  // Fetch recent transactions for this property
-  const { data: transactions = [] } = await supabase
+  // Fetch all transactions for this property (for chart and table)
+  const { data: allTransactions = [] } = await supabase
     .from("transactions")
     .select(
       "id, date, type, category, payee_payer, description, amount, currency"
     )
     .eq("property_id", propertyId)
-    .order("date", { ascending: false })
-    .limit(10);
+    .order("date", { ascending: false });
+
+  // Get recent 10 transactions for the table
+  const transactions = allTransactions.slice(0, 10);
 
   // Fetch currency rates (get the most recent rate for each currency pair)
   const { data: currencyRates = [] } = await supabase
@@ -180,6 +183,14 @@ export default async function PropertyDetailsPage(props: {
             )}
           </div>
         </header>
+
+        {/* Monthly Income vs Expenses Chart */}
+        <section className="mb-8">
+          <MonthlyIncomeExpensesChart
+            transactions={allTransactions as Transaction[]}
+            currencyRates={rateMap}
+          />
+        </section>
 
         {/* Transactions header */}
         <section className="flex items-center justify-between gap-4">

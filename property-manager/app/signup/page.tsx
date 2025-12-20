@@ -206,8 +206,8 @@ export default function SignUpPage() {
               <input
                 id="email"
                 type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
                 placeholder="name@example.com"
                 required
                 className="w-full px-4 py-3 rounded-lg bg-slate-900/60 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition"
@@ -223,9 +223,9 @@ export default function SignUpPage() {
               </label>
               <input
                 id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 required
                 className="w-full px-4 py-3 rounded-lg bg-slate-900/60 border border-slate-700 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition"
@@ -282,7 +282,7 @@ export default function SignUpPage() {
                 />
               </svg>
             </button>
-          </form>
+      </form>
         </div>
       </div>
     </div>

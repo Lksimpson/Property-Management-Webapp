@@ -44,7 +44,7 @@ export default function Home() {
         <h1 className="text-4xl font-bold tracking-tight text-white sm:text-5xl md:text-6xl lg:text-7xl">
           Simplify Your Property{" "}
           <span className="text-emerald-400">Management</span>
-        </h1>
+          </h1>
         <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-slate-300 sm:text-xl">
           Track rent payments, manage tenants, handle maintenance requests, and
           monitor your portfolio — all in one powerful platform.
@@ -89,7 +89,7 @@ export default function Home() {
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
-              >
+            >
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -141,7 +141,7 @@ export default function Home() {
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
-              >
+            >
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -156,7 +156,7 @@ export default function Home() {
             <p className="text-slate-400">
               Your financial data is protected with enterprise-grade security
               and reliable infrastructure.
-            </p>
+          </p>
           </div>
         </div>
       </section>
