@@ -13,10 +13,10 @@ async function createTransaction(formData: FormData) {
 
   const supabase = createSupabaseServerClient();
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (!session?.user) {
+  if (!user) {
     redirect("/login");
   }
 
@@ -43,7 +43,7 @@ async function createTransaction(formData: FormData) {
     description,
     amount,
     currency,
-    created_by: session.user.id,
+    created_by: user.id,
   });
 
   if (error) {
@@ -61,10 +61,10 @@ export default async function NewTransactionPage(props: {
 
   const supabase = createSupabaseServerClient();
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (!session?.user) {
+  if (!user) {
     redirect("/login");
   }
 

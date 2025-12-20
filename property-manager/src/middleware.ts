@@ -23,7 +23,7 @@ export async function middleware(req: NextRequest) {
     }
   );
 
-  await supabase.auth.getSession();
+  await supabase.auth.getUser();
   return res;
 }
 

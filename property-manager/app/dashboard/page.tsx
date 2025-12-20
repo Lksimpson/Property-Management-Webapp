@@ -20,10 +20,10 @@ type Transaction = {
 export default async function DashboardPage() {
   const supabase = createSupabaseServerClient();
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (!session?.user) {
+  if (!user) {
     redirect("/login");
   }
 
@@ -43,12 +43,20 @@ export default async function DashboardPage() {
 
   if (propertyIds.length > 0) {
     const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-      .toISOString()
-      .slice(0, 10);
-    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0)
-      .toISOString()
-      .slice(0, 10);
+
+    function formatLocalDate(d: Date) {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, "0");
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${y}-${m}-${day}`;
+    }
+
+    const startOfMonth = formatLocalDate(
+      new Date(now.getFullYear(), now.getMonth(), 1)
+    );
+    const endOfMonth = formatLocalDate(
+      new Date(now.getFullYear(), now.getMonth() + 1, 0)
+    );
 
     const { data: transactions = [] } = await supabase
       .from("transactions")
@@ -89,14 +97,14 @@ export default async function DashboardPage() {
             <h1 className="mt-1 text-3xl font-semibold tracking-tight text-slate-50">
               Welcome back,{" "}
               <span className="text-emerald-400">
-                {session.user.email?.split("@")[0] ?? "Manager"}
+                {user.email?.split("@")[0] ?? "Manager"}
               </span>
             </h1>
           </div>
           <div className="flex items-center gap-3">
             <SignOutButton />
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-300 ring-1 ring-emerald-500/40">
-              {session.user.email?.[0]?.toUpperCase() ?? "U"}
+              {user.email?.[0]?.toUpperCase() ?? "U"}
             </div>
           </div>
         </header>

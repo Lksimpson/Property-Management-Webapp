@@ -8,10 +8,10 @@ async function createProperty(formData: FormData) {
 
   const supabase = createSupabaseServerClient();
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (!session?.user) {
+  if (!user) {
     redirect("/login");
   }
 
@@ -46,7 +46,7 @@ async function createProperty(formData: FormData) {
   // 2) Add the current user as an owner in property_members
   const { error: memberError } = await supabase.from("property_members").insert({
     property_id: property.id,
-    user_id: session.user.id,
+    user_id: user.id,
     role: "owner",
   });
 
@@ -64,10 +64,10 @@ async function createProperty(formData: FormData) {
 export default async function NewPropertyPage() {
   const supabase = createSupabaseServerClient();
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (!session?.user) {
+  if (!user) {
     redirect("/login");
   }
 

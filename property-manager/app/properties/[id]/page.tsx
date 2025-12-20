@@ -37,10 +37,10 @@ async function deleteProperty(formData: FormData) {
 
   const supabase = createSupabaseServerClient();
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (!session?.user) {
+  if (!user) {
     redirect("/login");
   }
 
@@ -63,10 +63,10 @@ export default async function PropertyDetailsPage(props: {
 
   const supabase = createSupabaseServerClient();
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (!session?.user) {
+  if (!user) {
     redirect("/login");
   }
 
@@ -86,7 +86,7 @@ export default async function PropertyDetailsPage(props: {
     .from("property_members")
     .select("role")
     .eq("property_id", propertyId)
-    .eq("user_id", session.user.id)
+    .eq("user_id", user.id)
     .single<Membership>();
 
   if (!membership) {
