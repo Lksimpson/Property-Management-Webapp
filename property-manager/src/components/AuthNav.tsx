@@ -33,7 +33,21 @@ export default function AuthNav() {
   }, []);
 
   const handleLogout = async () => {
-    await fetch("/api/auth/logout");
+    try {
+      // Sign out on the client first to clear client session/localStorage
+      await supabase.auth.signOut();
+    } catch (err) {
+      console.error("Client signOut error:", err);
+    }
+
+    try {
+      // Then call server-side logout to clear any server cookies (if present)
+      // Use POST and include credentials so cookies are sent if they exist.
+      await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
+    } catch (err) {
+      console.error("Server logout call failed:", err);
+    }
+
     router.refresh();
     router.push("/login");
   };

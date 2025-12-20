@@ -1,4 +1,5 @@
 import Link from "next/link";
+import SignOutButton from "@/src/components/SignOutButton";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/src/lib/supabase/server";
 
@@ -93,12 +94,7 @@ export default async function DashboardPage() {
             </h1>
           </div>
           <div className="flex items-center gap-3">
-            <Link
-              href="/api/auth/logout"
-              className="rounded-full border border-slate-700 px-4 py-2 text-sm text-slate-200 hover:border-slate-500 hover:bg-slate-800/60"
-            >
-              Sign out
-            </Link>
+            <SignOutButton />
             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-300 ring-1 ring-emerald-500/40">
               {session.user.email?.[0]?.toUpperCase() ?? "U"}
             </div>

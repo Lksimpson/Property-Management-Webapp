@@ -1,16 +1,33 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/src/lib/supabase/server";
 
-export async function GET() {
+async function performSignOut() {
   try {
     const supabase = createSupabaseServerClient();
-    // Attempt to sign out; this may throw if env/config is incorrect.
     await supabase.auth.signOut();
+    return { ok: true };
   } catch (err) {
-    // Log server-side for debugging (Vercel function logs).
     console.error("Error during logout:", err);
-    // Continue to redirect to login even on error to avoid surfacing a 500 to users.
+    return { ok: false, error: (err as any)?.message ?? String(err) };
+  }
+}
+
+export async function GET(request: Request) {
+  // If the request is an RSC prefetch (Next adds _rsc), return JSON instead of redirect
+  const url = new URL(request.url);
+  const isRsc = url.searchParams.has("_rsc");
+
+  const result = await performSignOut();
+
+  if (isRsc) {
+    return NextResponse.json(result);
   }
 
-  return NextResponse.redirect('/login');
+  // For a normal browser navigation, redirect to the login page.
+  return NextResponse.redirect("/login");
+}
+
+export async function POST() {
+  const result = await performSignOut();
+  return NextResponse.json(result);
 }
