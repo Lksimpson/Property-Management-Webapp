@@ -3,6 +3,8 @@ import { notFound, redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/src/lib/supabase/server";
 import TransactionActions from "@/src/components/TransactionActions";
 
+export const dynamic = "force-dynamic";
+
 type Property = {
   id: string;
   name: string | null;

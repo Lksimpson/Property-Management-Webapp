@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/src/lib/supabase/server";
 
+export const dynamic = "force-dynamic";
+
 async function updateProperty(formData: FormData) {
   "use server";
 

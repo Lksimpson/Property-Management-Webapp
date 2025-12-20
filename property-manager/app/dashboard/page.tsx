@@ -2,6 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/src/lib/supabase/server";
 
+export const dynamic = "force-dynamic";
+
 type Property = {
   id: string;
   name: string | null;
