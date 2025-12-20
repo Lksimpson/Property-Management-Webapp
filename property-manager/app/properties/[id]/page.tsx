@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/src/lib/supabase/server";
-import TransactionActions from "@/src/components/TransactionActions";
+import TransactionTable from "@/src/components/TransactionTable";
 
 export const dynamic = "force-dynamic";
 
@@ -109,6 +109,25 @@ export default async function PropertyDetailsPage(props: {
     .order("date", { ascending: false })
     .limit(10);
 
+  // Fetch currency rates (get the most recent rate for each currency pair)
+  const { data: currencyRates = [] } = await supabase
+    .from("currency_rates")
+    .select("base_currency, target_currency, rate, fetched_at")
+    .in("base_currency", ["USD", "JMD", "XCD"])
+    .in("target_currency", ["USD", "JMD", "XCD"])
+    .order("fetched_at", { ascending: false });
+
+  // Build a map for quick lookup: { "JMD-USD": 0.0062, "XCD-USD": 0.37, etc. }
+  // Only keep the most recent rate for each pair (since we ordered DESC)
+  const rateMap = new Map<string, number>();
+  currencyRates.forEach((rate) => {
+    const key = `${rate.base_currency}-${rate.target_currency}`;
+    // Only set if not already in map (since we're processing from most recent to oldest)
+    if (!rateMap.has(key)) {
+      rateMap.set(key, Number(rate.rate));
+    }
+  });
+
   const hasTransactions = (transactions as Transaction[]).length > 0;
 
   return (
@@ -185,73 +204,12 @@ export default async function PropertyDetailsPage(props: {
         {/* Transactions list / empty state */}
         <section className="mt-5 flex-1 rounded-2xl border border-slate-800/80 bg-gradient-to-b from-slate-900/80 to-slate-950/80 p-4 shadow-lg shadow-black/40">
           {hasTransactions ? (
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-left text-sm">
-                <thead className="border-b border-slate-800/80 text-xs uppercase tracking-[0.16em] text-slate-500">
-                  <tr>
-                    <th className="py-3 pr-4">Date</th>
-                    <th className="py-3 pr-4">Type</th>
-                    <th className="py-3 pr-4">Category</th>
-                    <th className="py-3 pr-4">Counterparty</th>
-                    <th className="py-3 pr-4">Description</th>
-                    <th className="py-3 pr-4 text-right">Amount</th>
-                    {canManageTransactions && (
-                      <th className="py-3 pr-4 text-right">Actions</th>
-                    )}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/70">
-                  {(transactions as Transaction[]).map((tx) => (
-                    <tr key={tx.id} className="align-middle">
-                      <td className="py-3 pr-4 text-slate-200">
-                        {tx.date
-                          ? new Date(tx.date + "T00:00:00").toLocaleDateString()
-                          : "—"}
-                      </td>
-                      <td
-                        className={`py-3 pr-4 text-xs font-medium ${
-                          tx.type === "income"
-                            ? "text-emerald-400"
-                            : "text-rose-400"
-                        }`}
-                      >
-                        {tx.type === "income" ? "Income" : "Expense"}
-                      </td>
-                      <td className="py-3 pr-4 text-slate-300">
-                        {tx.category ?? "—"}
-                      </td>
-                      <td className="py-3 pr-4 text-slate-300">
-                        {tx.payee_payer ?? "—"}
-                      </td>
-                      <td className="py-3 pr-4 text-slate-400">
-                        {tx.description ?? "—"}
-                      </td>
-                      <td className="py-3 pr-4 text-right text-slate-100">
-                        {tx.amount.toLocaleString(undefined, {
-                          style: "currency",
-                          currency: tx.currency || "USD",
-                        })}
-                      </td>
-                      {canManageTransactions && (
-                        <td className="py-3 pr-4 text-right">
-                          <TransactionActions
-                            transactionId={tx.id}
-                            propertyId={propertyId}
-                            transactionDescription={
-                              tx.description ||
-                              `${tx.type === "income" ? "Income" : "Expense"}: ${tx.amount.toLocaleString(undefined, {
-                                style: "currency",
-                                currency: tx.currency || "USD",
-                              })}`
-                            }
-                          />
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <TransactionTable
+              transactions={transactions as Transaction[]}
+              propertyId={propertyId}
+              canManageTransactions={canManageTransactions}
+              currencyRates={rateMap}
+            />
           ) : (
             <div className="flex h-full flex-col items-center justify-center py-12 text-center">
               <h3 className="text-lg font-semibold text-slate-50">
