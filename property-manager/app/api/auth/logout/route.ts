@@ -2,9 +2,15 @@ import { NextResponse } from "next/server";
 import { createSupabaseServerClient } from "@/src/lib/supabase/server";
 
 export async function GET() {
-  const supabase = createSupabaseServerClient();
-  await supabase.auth.signOut();
-  // Use a relative redirect to avoid sending users to a hardcoded origin
-  // (which can be localhost in dev env vars) — keeps the redirect on the same host.
+  try {
+    const supabase = createSupabaseServerClient();
+    // Attempt to sign out; this may throw if env/config is incorrect.
+    await supabase.auth.signOut();
+  } catch (err) {
+    // Log server-side for debugging (Vercel function logs).
+    console.error("Error during logout:", err);
+    // Continue to redirect to login even on error to avoid surfacing a 500 to users.
+  }
+
   return NextResponse.redirect('/login');
 }
