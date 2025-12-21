@@ -15,6 +15,7 @@ type Transaction = {
   property_id: string;
   amount: number;
   type: "income" | "expense";
+  currency: string | null;
 };
 
 export default async function DashboardPage() {
@@ -37,9 +38,44 @@ export default async function DashboardPage() {
 
   const propertyIds = properties.map((p) => p.id);
 
+  // Fetch currency rates for conversion
+  const { data: currencyRates = [] } = await supabase
+    .from("currency_rates")
+    .select("base_currency, target_currency, rate, fetched_at")
+    .in("base_currency", ["USD", "JMD", "XCD"])
+    .in("target_currency", ["USD", "JMD", "XCD"])
+    .order("fetched_at", { ascending: false });
+
+  // Build a map for quick lookup
+  const rateMap = new Map<string, number>();
+  (currencyRates ?? []).forEach((rate) => {
+    const key = `${rate.base_currency}-${rate.target_currency}`;
+    if (!rateMap.has(key)) {
+      rateMap.set(key, Number(rate.rate));
+    }
+  });
+
+  // Convert amount from source currency to USD
+  const convertToUSD = (amount: number, fromCurrency: string): number => {
+    if (fromCurrency === "USD") return amount;
+
+    const toUsdKey = `${fromCurrency}-USD`;
+    const toUsdRate = rateMap.get(toUsdKey);
+    if (toUsdRate !== undefined) {
+      return amount * toUsdRate;
+    }
+
+    // If no rate found, return original amount (shouldn't happen, but fallback)
+    return amount;
+  };
+
   // Fetch transactions for this month for all of the user's properties.
   let totalIncome = 0;
   let totalExpenses = 0;
+  const propertyStats = new Map<
+    string,
+    { income: number; expenses: number }
+  >();
 
   if (propertyIds.length > 0) {
     const now = new Date();
@@ -60,16 +96,28 @@ export default async function DashboardPage() {
 
     const { data: transactions = [] } = await supabase
       .from("transactions")
-      .select("property_id, amount, type")
+      .select("property_id, amount, type, currency")
       .in("property_id", propertyIds)
       .gte("date", startOfMonth)
       .lte("date", endOfMonth);
 
     for (const tx of transactions as Transaction[]) {
+      const txCurrency = (tx.currency || "USD").toUpperCase();
+      const usdAmount = convertToUSD(Number(tx.amount), txCurrency);
+
+      // Initialize property stats if needed
+      if (!propertyStats.has(tx.property_id)) {
+        propertyStats.set(tx.property_id, { income: 0, expenses: 0 });
+      }
+
+      const stats = propertyStats.get(tx.property_id)!;
+
       if (tx.type === "income") {
-        totalIncome += Number(tx.amount);
+        totalIncome += usdAmount;
+        stats.income += usdAmount;
       } else if (tx.type === "expense") {
-        totalExpenses += Number(tx.amount);
+        totalExpenses += usdAmount;
+        stats.expenses += usdAmount;
       }
     }
   }
@@ -165,50 +213,82 @@ export default async function DashboardPage() {
 
           {hasProperties ? (
             <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-              {properties.map((property) => (
-                <article
-                  key={property.id}
-                  className="group flex flex-col overflow-hidden rounded-2xl bg-gradient-to-b from-slate-900/80 to-slate-900 border border-slate-800/80 shadow-lg shadow-black/40"
-                >
-                  <div className="relative h-32 overflow-hidden bg-gradient-to-tr from-slate-800 to-slate-700">
-                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_0_0,#22c55e33,transparent_55%),radial-gradient(circle_at_100%_100%,#38bdf833,transparent_55%)]" />
-                  </div>
-                  <div className="flex flex-1 flex-col px-4 pb-4 pt-3">
-                    <h3 className="truncate text-sm font-semibold text-slate-50">
-                      {property.name ?? "Untitled property"}
-                    </h3>
-                    {property.address && (
-                      <p className="mt-1 line-clamp-2 text-xs text-slate-400">
-                        {property.address}
-                      </p>
-                    )}
-                    <div className="mt-4 flex items-center justify-between text-xs text-slate-400">
-                      <div className="flex flex-col gap-1">
-                        <span className="text-[0.7rem] uppercase tracking-wide">
-                          This month
-                        </span>
-                        <span className="text-[0.7rem] text-slate-500">
-                          Income / Expenses / Net
-                        </span>
+              {properties.map((property) => {
+                const stats = propertyStats.get(property.id) || {
+                  income: 0,
+                  expenses: 0,
+                };
+                const net = stats.income - stats.expenses;
+
+                return (
+                  <article
+                    key={property.id}
+                    className="group flex flex-col overflow-hidden rounded-2xl bg-gradient-to-b from-slate-900/80 to-slate-900 border border-slate-800/80 shadow-lg shadow-black/40"
+                  >
+                    <div className="relative h-32 overflow-hidden bg-gradient-to-tr from-slate-800 to-slate-700">
+                      <div className="absolute inset-0 bg-[radial-gradient(circle_at_0_0,#22c55e33,transparent_55%),radial-gradient(circle_at_100%_100%,#38bdf833,transparent_55%)]" />
+                    </div>
+                    <div className="flex flex-1 flex-col px-4 pb-4 pt-3">
+                      <h3 className="truncate text-sm font-semibold text-slate-50">
+                        {property.name ?? "Untitled property"}
+                      </h3>
+                      {property.address && (
+                        <p className="mt-1 line-clamp-2 text-xs text-slate-400">
+                          {property.address}
+                        </p>
+                      )}
+                      <div className="mt-4 flex items-center justify-between text-xs text-slate-400">
+                        <div className="flex flex-col gap-1">
+                          <span className="text-[0.7rem] uppercase tracking-wide">
+                            This month
+                          </span>
+                          <span className="text-[0.7rem] text-slate-500">
+                            Income / Expenses / Net
+                          </span>
+                        </div>
+                        <div className="text-right text-[0.7rem]">
+                          <p className="text-emerald-400">
+                            {stats.income.toLocaleString(undefined, {
+                              style: "currency",
+                              currency: "USD",
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 0,
+                            })}
+                          </p>
+                          <p className="text-rose-400">
+                            {stats.expenses.toLocaleString(undefined, {
+                              style: "currency",
+                              currency: "USD",
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 0,
+                            })}
+                          </p>
+                          <p
+                            className={
+                              net >= 0 ? "text-emerald-400" : "text-rose-400"
+                            }
+                          >
+                            {net.toLocaleString(undefined, {
+                              style: "currency",
+                              currency: "USD",
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 0,
+                            })}
+                          </p>
+                        </div>
                       </div>
-                      {/* Placeholder mini-metrics per property – can be wired to real data later */}
-                      <div className="text-right text-[0.7rem]">
-                        <p className="text-emerald-400">—</p>
-                        <p className="text-rose-400">—</p>
-                        <p className="text-sky-400">—</p>
+                      <div className="mt-4 flex justify-between">
+                        <Link
+                          href={`/properties/${property.id}`}
+                          className="text-xs font-medium text-emerald-400 hover:text-emerald-300"
+                        >
+                          View details →
+                        </Link>
                       </div>
                     </div>
-                    <div className="mt-4 flex justify-between">
-                      <Link
-                        href={`/properties/${property.id}`}
-                        className="text-xs font-medium text-emerald-400 hover:text-emerald-300"
-                      >
-                        View details →
-                      </Link>
-                    </div>
-                  </div>
-                </article>
-              ))}
+                  </article>
+                );
+              })}
             </div>
           ) : (
             <div className="mt-4 flex flex-1 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-700 bg-slate-900/60 px-6 py-16 text-center">

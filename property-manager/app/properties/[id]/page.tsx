@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Suspense } from "react";
 import { notFound, redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/src/lib/supabase/server";
 import TransactionTable from "@/src/components/TransactionTable";
@@ -59,8 +60,13 @@ async function deleteProperty(formData: FormData) {
 
 export default async function PropertyDetailsPage(props: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ page?: string }>;
 }) {
   const { id: propertyId } = await props.params;
+  const { page: pageParam } = await props.searchParams;
+  const currentPage = Math.max(1, parseInt(pageParam || "1", 10));
+  const transactionsPerPage = 10;
+  const offset = (currentPage - 1) * transactionsPerPage;
 
   const supabase = createSupabaseServerClient();
   const {
@@ -100,17 +106,31 @@ export default async function PropertyDetailsPage(props: {
   const canEditProperty = role === "manager" || role === "owner";
   const canDeleteProperty = role === "owner";
 
-  // Fetch all transactions for this property (for chart and table)
+  // Fetch all transactions for this property (for chart)
   const { data: allTransactions = [] } = await supabase
+    .from("transactions")
+    .select("id, date, type, amount, currency")
+    .eq("property_id", propertyId)
+    .order("date", { ascending: false });
+
+  // Get total count for pagination
+  const { count } = await supabase
+    .from("transactions")
+    .select("*", { count: "exact", head: true })
+    .eq("property_id", propertyId);
+
+  const totalTransactions = count ?? 0;
+  const totalPages = Math.ceil(totalTransactions / transactionsPerPage);
+
+  // Fetch paginated transactions for the table (efficient query)
+  const { data: transactions = [] } = await supabase
     .from("transactions")
     .select(
       "id, date, type, category, payee_payer, description, amount, currency"
     )
     .eq("property_id", propertyId)
-    .order("date", { ascending: false });
-
-  // Get recent 10 transactions for the table
-  const transactions = (allTransactions ?? []).slice(0, 10);
+    .order("date", { ascending: false })
+    .range(offset, offset + transactionsPerPage - 1);
 
   // Fetch currency rates (get the most recent rate for each currency pair)
   const { data: currencyRates = [] } = await supabase
@@ -196,31 +216,57 @@ export default async function PropertyDetailsPage(props: {
         <section className="flex items-center justify-between gap-4">
           <div>
             <h2 className="text-base font-semibold text-slate-100">
-              Recent transactions
+              Transactions
             </h2>
             <p className="mt-1 text-xs text-slate-400">
-              Showing the last 10 transactions for this property.
+              View and manage all transactions for this property.
             </p>
           </div>
           {canManageTransactions && (
-            <Link
-              href={`/properties/${propertyId}/transactions/new`}
-              className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-medium text-emerald-950 shadow-lg shadow-emerald-500/30 transition hover:bg-emerald-400"
-            >
-              Add transaction
-            </Link>
+            <div className="flex items-center gap-3">
+              <Link
+                href={`/properties/${propertyId}/transactions/import`}
+                className="rounded-full border border-slate-700 px-4 py-2 text-sm font-medium text-slate-200 hover:border-slate-500 hover:bg-slate-800/60 transition flex items-center gap-2"
+              >
+                <svg
+                  className="h-4 w-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
+                  />
+                </svg>
+                Import XLSX
+              </Link>
+              <Link
+                href={`/properties/${propertyId}/transactions/new`}
+                className="rounded-full bg-emerald-500 px-4 py-2 text-sm font-medium text-emerald-950 shadow-lg shadow-emerald-500/30 transition hover:bg-emerald-400"
+              >
+                Add transaction
+              </Link>
+            </div>
           )}
         </section>
 
         {/* Transactions list / empty state */}
         <section className="mt-5 flex-1 rounded-2xl border border-slate-800/80 bg-gradient-to-b from-slate-900/80 to-slate-950/80 p-4 shadow-lg shadow-black/40">
           {hasTransactions ? (
-            <TransactionTable
-              transactions={transactions as Transaction[]}
-              propertyId={propertyId}
-              canManageTransactions={canManageTransactions}
-              currencyRates={rateMap}
-            />
+            <Suspense fallback={<div className="py-8 text-center text-slate-400">Loading transactions...</div>}>
+              <TransactionTable
+                transactions={transactions as Transaction[]}
+                propertyId={propertyId}
+                canManageTransactions={canManageTransactions}
+                currencyRates={rateMap}
+                currentPage={currentPage}
+                totalPages={totalPages}
+                totalTransactions={totalTransactions}
+              />
+            </Suspense>
           ) : (
             <div className="flex h-full flex-col items-center justify-center py-12 text-center">
               <h3 className="text-lg font-semibold text-slate-50">

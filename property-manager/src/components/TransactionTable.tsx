@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import TransactionActions from "./TransactionActions";
 
 type Transaction = {
@@ -19,6 +21,9 @@ type TransactionTableProps = {
   propertyId: string;
   canManageTransactions: boolean;
   currencyRates: Map<string, number>;
+  currentPage: number;
+  totalPages: number;
+  totalTransactions: number;
 };
 
 type Currency = "USD" | "JMD" | "XCD" | "ALL";
@@ -28,9 +33,24 @@ export default function TransactionTable({
   propertyId,
   canManageTransactions,
   currencyRates,
+  currentPage,
+  totalPages,
+  totalTransactions,
 }: TransactionTableProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [filterCurrency, setFilterCurrency] = useState<Currency>("ALL");
   const [displayCurrency, setDisplayCurrency] = useState<"USD" | "JMD" | "XCD">("USD");
+
+  const updatePage = (newPage: number) => {
+    const params = new URLSearchParams(searchParams?.toString());
+    if (newPage === 1) {
+      params.delete("page");
+    } else {
+      params.set("page", newPage.toString());
+    }
+    router.push(`/properties/${propertyId}?${params.toString()}`);
+  };
 
   // Convert amount from source currency to target currency
   // Rates in currency_rates are stored as: base_currency -> target_currency = rate
@@ -241,6 +261,39 @@ export default function TransactionTable({
           </tbody>
         </table>
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="mt-6 flex items-center justify-between border-t border-slate-800/80 pt-4">
+          <div className="text-sm text-slate-400">
+            Showing {(currentPage - 1) * 10 + 1} to{" "}
+            {Math.min(currentPage * 10, totalTransactions)} of{" "}
+            {totalTransactions} transactions
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => updatePage(currentPage - 1)}
+              disabled={currentPage === 1}
+              className="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800/60 disabled:opacity-50 disabled:cursor-not-allowed transition"
+            >
+              Previous
+            </button>
+            <div className="flex items-center gap-1 px-4 py-2 text-sm text-slate-200">
+              <span className="text-slate-400">Page</span>
+              <span className="font-medium">{currentPage}</span>
+              <span className="text-slate-400">of</span>
+              <span className="font-medium">{totalPages}</span>
+            </div>
+            <button
+              onClick={() => updatePage(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              className="rounded-lg border border-slate-700 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800/60 disabled:opacity-50 disabled:cursor-not-allowed transition"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 }
