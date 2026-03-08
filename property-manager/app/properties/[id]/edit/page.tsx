@@ -26,6 +26,8 @@ async function updateProperty(formData: FormData) {
     typeof addressRaw === "string" && addressRaw.trim().length > 0
       ? addressRaw.trim()
       : null;
+  const countryRaw = formData.get("country")?.toString();
+  const country = countryRaw === "JM" || countryRaw === "LC" ? countryRaw : null;
 
   if (!name) {
     redirect(`/properties/${propertyId}/edit`);
@@ -33,7 +35,7 @@ async function updateProperty(formData: FormData) {
 
   const { error } = await supabase
     .from("properties")
-    .update({ name, address })
+    .update({ name, address, country })
     .eq("id", propertyId);
 
   if (error) {
@@ -60,7 +62,7 @@ export default async function EditPropertyPage(props: {
 
   const { data: property } = await supabase
     .from("properties")
-    .select("id, name, address")
+    .select("id, name, address, country")
     .eq("id", propertyId)
     .single();
 
@@ -113,6 +115,25 @@ export default async function EditPropertyPage(props: {
                 defaultValue={property.address ?? ""}
                 className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-slate-50 outline-none ring-emerald-500/40 placeholder:text-slate-500 focus:border-emerald-400 focus:ring-2"
               />
+            </div>
+
+            <div>
+              <label
+                htmlFor="country"
+                className="block text-sm font-medium text-slate-200"
+              >
+                Country
+              </label>
+              <select
+                id="country"
+                name="country"
+                defaultValue={(property as any).country ?? ""}
+                className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-slate-50 outline-none ring-emerald-500/40 focus:border-emerald-400 focus:ring-2"
+              >
+                <option value="">Not set</option>
+                <option value="JM">Jamaica (JM)</option>
+                <option value="LC">St. Lucia (LC)</option>
+              </select>
             </div>
 
             <div className="flex items-center justify-between pt-4">

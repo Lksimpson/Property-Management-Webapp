@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/src/lib/supabase/server";
+import { INCOME_CATEGORIES, EXPENSE_CATEGORIES } from "@/src/lib/categories";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +52,7 @@ async function createTransaction(formData: FormData) {
     redirect(`/properties/${propertyId}/transactions/new`);
   }
 
-  redirect(`/properties/${propertyId}`);
+  redirect(`/properties/${propertyId}?tab=transactions`);
 }
 
 export default async function NewTransactionPage(props: {
@@ -166,12 +167,24 @@ export default async function NewTransactionPage(props: {
                 >
                   Category
                 </label>
-                <input
+                <select
                   id="category"
                   name="category"
-                  placeholder="Rent, Maintenance, Utilities..."
-                  className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-slate-50 outline-none ring-emerald-500/40 placeholder:text-slate-500 focus:border-emerald-400 focus:ring-2"
-                />
+                  defaultValue=""
+                  className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-slate-50 outline-none ring-emerald-500/40 focus:border-emerald-400 focus:ring-2"
+                >
+                  <option value="">— Select category —</option>
+                  <optgroup label="Income">
+                    {INCOME_CATEGORIES.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Expense">
+                    {EXPENSE_CATEGORIES.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </optgroup>
+                </select>
               </div>
               <div>
                 <label
@@ -207,7 +220,7 @@ export default async function NewTransactionPage(props: {
 
             <div className="flex items-center justify-between pt-4">
               <a
-                href={`/properties/${propertyId}`}
+                href={`/properties/${propertyId}?tab=transactions`}
                 className="text-sm text-slate-400 hover:text-slate-200"
               >
                 Cancel

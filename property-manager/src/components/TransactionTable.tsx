@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import TransactionActions from "./TransactionActions";
+import { convertCurrency as convertCurrencyUtil } from "@/src/lib/currency";
 
 type Transaction = {
   id: string;
@@ -52,45 +53,6 @@ export default function TransactionTable({
     router.push(`/properties/${propertyId}?${params.toString()}`);
   };
 
-  // Convert amount from source currency to target currency
-  // Rates in currency_rates are stored as: base_currency -> target_currency = rate
-  // e.g., JMD -> USD = 0.0062 means 1 JMD = 0.0062 USD
-  const convertCurrency = (
-    amount: number,
-    fromCurrency: string,
-    toCurrency: string
-  ): number => {
-    if (fromCurrency === toCurrency) return amount;
-
-    // Normalize to USD first (if not already USD)
-    let usdAmount = amount;
-    if (fromCurrency !== "USD") {
-      const toUsdKey = `${fromCurrency}-USD`;
-      const toUsdRate = currencyRates.get(toUsdKey);
-      if (toUsdRate !== undefined) {
-        usdAmount = amount * toUsdRate;
-      } else {
-        // If no rate found, return original amount
-        console.warn(`No exchange rate found for ${toUsdKey}`);
-        return amount;
-      }
-    }
-
-    // Convert from USD to target currency
-    if (toCurrency === "USD") return usdAmount;
-
-    const toTargetKey = `${toCurrency}-USD`;
-    const toTargetRate = currencyRates.get(toTargetKey);
-    if (toTargetRate !== undefined && toTargetRate > 0) {
-      // To convert from USD to target: divide USD amount by the rate
-      // e.g., if 1 XCD = 0.37 USD, then X USD = X / 0.37 XCD
-      return usdAmount / toTargetRate;
-    }
-
-    console.warn(`No exchange rate found for ${toTargetKey}`);
-    return usdAmount;
-  };
-
   const filteredTransactions = useMemo(() => {
     const filtered =
       filterCurrency === "ALL"
@@ -102,10 +64,11 @@ export default function TransactionTable({
     // Convert amounts to display currency
     return filtered.map((tx) => {
       const txCurrency = (tx.currency || "USD").toUpperCase();
-      const convertedAmount = convertCurrency(
+      const convertedAmount = convertCurrencyUtil(
         tx.amount,
         txCurrency,
-        displayCurrency
+        displayCurrency,
+        currencyRates
       );
 
       return {
@@ -254,7 +217,7 @@ export default function TransactionTable({
                   colSpan={canManageTransactions ? 8 : 7}
                   className="py-8 text-center text-slate-400"
                 >
-                  No transactions found for the selected currency.
+                  No transactions match the current filters.
                 </td>
               </tr>
             )}

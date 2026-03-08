@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useMemo } from "react";
+import { convertCurrency as convertCurrencyUtil } from "@/src/lib/currency";
 import {
-  LineChart,
   Line,
   XAxis,
   YAxis,
@@ -12,6 +12,7 @@ import {
   Area,
   AreaChart,
   ResponsiveContainer,
+  ReferenceLine,
 } from "recharts";
 
 type Transaction = {
@@ -33,6 +34,7 @@ type ChartDataPoint = {
   monthLabel: string;
   income: number;
   expenses: number;
+  net: number;
 };
 
 export default function MonthlyIncomeExpensesChart({
@@ -40,38 +42,7 @@ export default function MonthlyIncomeExpensesChart({
   currencyRates,
 }: MonthlyIncomeExpensesChartProps) {
   const [displayCurrency, setDisplayCurrency] = useState<Currency>("USD");
-
-  // Convert amount from source currency to target currency
-  const convertCurrency = (
-    amount: number,
-    fromCurrency: string,
-    toCurrency: string
-  ): number => {
-    if (fromCurrency === toCurrency) return amount;
-
-    let usdAmount = amount;
-    if (fromCurrency !== "USD") {
-      const toUsdKey = `${fromCurrency}-USD`;
-      const toUsdRate = currencyRates.get(toUsdKey);
-      if (toUsdRate !== undefined) {
-        usdAmount = amount * toUsdRate;
-      } else {
-        console.warn(`No exchange rate found for ${toUsdKey}`);
-        return amount;
-      }
-    }
-
-    if (toCurrency === "USD") return usdAmount;
-
-    const toTargetKey = `${toCurrency}-USD`;
-    const toTargetRate = currencyRates.get(toTargetKey);
-    if (toTargetRate !== undefined && toTargetRate > 0) {
-      return usdAmount / toTargetRate;
-    }
-
-    console.warn(`No exchange rate found for ${toTargetKey}`);
-    return usdAmount;
-  };
+  const [timeRange, setTimeRange] = useState<"3" | "6" | "12" | "all">("6");
 
   // Group transactions by month and calculate totals
   const chartData = useMemo(() => {
@@ -92,10 +63,11 @@ export default function MonthlyIncomeExpensesChart({
       });
 
       const txCurrency = (tx.currency || "USD").toUpperCase();
-      const convertedAmount = convertCurrency(
+      const convertedAmount = convertCurrencyUtil(
         tx.amount,
         txCurrency,
-        displayCurrency
+        displayCurrency,
+        currencyRates
       );
 
       if (!monthlyData.has(monthKey)) {
@@ -118,18 +90,21 @@ export default function MonthlyIncomeExpensesChart({
       .map(([monthKey, data]) => {
         const [year, month] = monthKey.split("-");
         const date = new Date(parseInt(year), parseInt(month) - 1);
+        const isAll = timeRange === "all";
         return {
           month: monthKey,
-          monthLabel: date.toLocaleDateString("en-US", { month: "short" }),
+          monthLabel: isAll
+            ? date.toLocaleDateString("en-US", { month: "short", year: "2-digit" })
+            : date.toLocaleDateString("en-US", { month: "short" }),
           income: data.income,
           expenses: data.expenses,
+          net: data.income - data.expenses,
         };
       })
       .sort((a, b) => a.month.localeCompare(b.month));
 
-    // Get last 6 months if we have more data
-    return dataArray.slice(-6);
-  }, [transactions, displayCurrency, currencyRates]);
+    return timeRange === "all" ? dataArray : dataArray.slice(-parseInt(timeRange));
+  }, [transactions, displayCurrency, currencyRates, timeRange]);
 
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
@@ -180,21 +155,38 @@ export default function MonthlyIncomeExpensesChart({
             Monthly Income vs Expenses
           </h2>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500 uppercase tracking-wider">
-            Display as:
-          </span>
-          <select
-            value={displayCurrency}
-            onChange={(e) =>
-              setDisplayCurrency(e.target.value as Currency)
-            }
-            className="rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-1.5 text-sm text-slate-50 outline-none ring-emerald-500/40 focus:border-emerald-400 focus:ring-2"
-          >
-            <option value="USD">USD</option>
-            <option value="JMD">JMD</option>
-            <option value="XCD">XCD</option>
-          </select>
+        <div className="flex items-center gap-3">
+          <div className="flex gap-1 rounded-lg border border-slate-700 bg-slate-900/60 p-1">
+            {(["3", "6", "12", "all"] as const).map((r) => (
+              <button
+                key={r}
+                onClick={() => setTimeRange(r)}
+                className={`rounded-md px-2.5 py-1 text-xs font-medium uppercase tracking-wider transition ${
+                  timeRange === r
+                    ? "bg-slate-700 text-slate-100"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                {r === "all" ? "All" : `${r}M`}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500 uppercase tracking-wider">
+              Display as:
+            </span>
+            <select
+              value={displayCurrency}
+              onChange={(e) =>
+                setDisplayCurrency(e.target.value as Currency)
+              }
+              className="rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-1.5 text-sm text-slate-50 outline-none ring-emerald-500/40 focus:border-emerald-400 focus:ring-2"
+            >
+              <option value="USD">USD</option>
+              <option value="JMD">JMD</option>
+              <option value="XCD">XCD</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -257,6 +249,16 @@ export default function MonthlyIncomeExpensesChart({
               formatter={(value) => (
                 <span className="text-sm text-slate-300">{value}</span>
               )}
+            />
+            <ReferenceLine y={0} stroke="#64748b" strokeDasharray="4 4" />
+            <Line
+              type="monotone"
+              dataKey="net"
+              stroke="#94a3b8"
+              strokeWidth={2}
+              dot={false}
+              name="Net"
+              strokeDasharray="5 5"
             />
             <Area
               type="monotone"

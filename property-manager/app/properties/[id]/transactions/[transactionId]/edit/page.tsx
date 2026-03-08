@@ -1,5 +1,6 @@
 import { redirect, notFound } from "next/navigation";
 import { createSupabaseServerClient } from "@/src/lib/supabase/server";
+import { INCOME_CATEGORIES, EXPENSE_CATEGORIES, KNOWN_CATEGORIES } from "@/src/lib/categories";
 
 export const dynamic = "force-dynamic";
 
@@ -53,7 +54,7 @@ async function updateTransaction(formData: FormData) {
     redirect(`/properties/${propertyId}/transactions/${transactionId}/edit`);
   }
 
-  redirect(`/properties/${propertyId}`);
+  redirect(`/properties/${propertyId}?tab=transactions`);
 }
 
 export default async function EditTransactionPage(props: {
@@ -92,13 +93,16 @@ export default async function EditTransactionPage(props: {
     .single();
 
   if (!membership || (membership.role !== "manager" && membership.role !== "owner")) {
-    redirect(`/properties/${propertyId}`);
+    redirect(`/properties/${propertyId}?tab=transactions`);
   }
 
   // Format date for input field (YYYY-MM-DD)
   const formattedDate = transaction.date
     ? new Date(transaction.date).toISOString().split("T")[0]
     : "";
+
+  const savedCategory = transaction.category || "";
+  const isLegacyCategory = savedCategory && !KNOWN_CATEGORIES.has(savedCategory);
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 text-slate-50">
@@ -202,13 +206,27 @@ export default async function EditTransactionPage(props: {
                 >
                   Category
                 </label>
-                <input
+                <select
                   id="category"
                   name="category"
-                  defaultValue={transaction.category || ""}
-                  placeholder="Rent, Maintenance, Utilities..."
-                  className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-slate-50 outline-none ring-emerald-500/40 placeholder:text-slate-500 focus:border-emerald-400 focus:ring-2"
-                />
+                  defaultValue={savedCategory}
+                  className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2 text-sm text-slate-50 outline-none ring-emerald-500/40 focus:border-emerald-400 focus:ring-2"
+                >
+                  <option value="">— Select category —</option>
+                  {isLegacyCategory && (
+                    <option value={savedCategory}>{savedCategory} (legacy)</option>
+                  )}
+                  <optgroup label="Income">
+                    {INCOME_CATEGORIES.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Expense">
+                    {EXPENSE_CATEGORIES.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </optgroup>
+                </select>
               </div>
               <div>
                 <label
@@ -246,7 +264,7 @@ export default async function EditTransactionPage(props: {
 
             <div className="flex items-center justify-between pt-4">
               <a
-                href={`/properties/${propertyId}`}
+                href={`/properties/${propertyId}?tab=transactions`}
                 className="text-sm text-slate-400 hover:text-slate-200"
               >
                 Cancel

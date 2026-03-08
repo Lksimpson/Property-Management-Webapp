@@ -1,5 +1,6 @@
 import Papa from "papaparse";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
+import { KNOWN_CATEGORIES } from "@/src/lib/categories";
 
 export type RawRow = Record<string, any>;
 export type ValidatedRow = {
@@ -29,14 +30,45 @@ function parseCSV(text: string) {
   return { data: result.data, errors: result.errors };
 }
 
-function parseXLSX(buffer: ArrayBuffer) {
-  // Read workbook with `cellDates: true` so real Excel dates become JS Date objects
-  const workbook = XLSX.read(new Uint8Array(buffer), { type: "array", cellDates: true });
-  const sheetName = workbook.SheetNames[0];
-  const sheet = workbook.Sheets[sheetName];
-  // Use raw:false so XLSX will format cell values (dates, etc.) when possible
-  const json: RawRow[] = XLSX.utils.sheet_to_json(sheet, { defval: null, raw: false });
-  return { data: json, errors: [] };
+async function parseXLSX(buffer: ArrayBuffer): Promise<{ data: RawRow[]; errors: [] }> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.load(buffer);
+
+  const worksheet = workbook.worksheets[0];
+  if (!worksheet) return { data: [], errors: [] };
+
+  const rows: RawRow[] = [];
+  let headers: string[] = [];
+
+  worksheet.eachRow((row, rowIndex) => {
+    // ExcelJS uses 1-based index with a leading undefined at index 0
+    const values = (row.values as ExcelJS.CellValue[]).slice(1);
+
+    if (rowIndex === 1) {
+      headers = values.map((v) => (v == null ? "" : String(v)));
+    } else {
+      const record: RawRow = {};
+      headers.forEach((header, i) => {
+        let cellVal: any = values[i];
+        if (cellVal instanceof Date) {
+          const y = cellVal.getFullYear();
+          const m = String(cellVal.getMonth() + 1).padStart(2, "0");
+          const d = String(cellVal.getDate()).padStart(2, "0");
+          cellVal = `${y}-${m}-${d}`;
+        } else if (cellVal != null && typeof cellVal === "object") {
+          // Formula result
+          if ("result" in cellVal) cellVal = (cellVal as any).result ?? null;
+          // Rich text
+          else if ("richText" in cellVal) cellVal = (cellVal as any).richText?.map((r: any) => r.text).join("") ?? null;
+          else if ("text" in cellVal) cellVal = (cellVal as any).text ?? null;
+        }
+        record[header] = cellVal ?? null;
+      });
+      rows.push(record);
+    }
+  });
+
+  return { data: rows, errors: [] };
 }
 
 function cleanString(val: any) {
@@ -75,7 +107,7 @@ export async function parseAndValidateFile(
       const parsed = parseCSV(text);
       raw = parsed.data as RawRow[];
     } else if (ext === "xls" || ext === "xlsx") {
-      const parsed = parseXLSX(buffer);
+      const parsed = await parseXLSX(buffer);
       raw = parsed.data as RawRow[];
     } else {
       // try CSV as fallback
@@ -111,19 +143,25 @@ export async function parseAndValidateFile(
     const amount = parseAmount(normalized["amount"] ?? normalized["amt"] ?? null);
     const currency = cleanString(normalized["currency"] ?? normalized["curr"] ?? null);
 
-    // Validate required fields: type and amount (and date optional)
+    // Hard errors: skip row
+    const hardErrors: ValidationError[] = [];
     if (!type) {
-      errors.push({ row: rowNum, message: `Invalid or missing 'type' (expected 'income' or 'expense')`, field: 'type', value: typeRaw });
+      hardErrors.push({ row: rowNum, message: `Invalid or missing 'type' (expected 'income' or 'expense')`, field: 'type', value: typeRaw });
     }
     if (amount == null || Number.isNaN(amount)) {
-      errors.push({ row: rowNum, message: `Invalid or missing 'amount'`, field: 'amount', value: normalized['amount'] });
+      hardErrors.push({ row: rowNum, message: `Invalid or missing 'amount'`, field: 'amount', value: normalized['amount'] });
     }
 
-    // If any errors for this row, skip adding to rows
-    const rowErrors = errors.filter((e) => e.row === rowNum);
-    if (rowErrors.length === 0) {
-      rows.push({ date, type: type!, category, payee_payer, description, amount: amount!, currency });
+    hardErrors.forEach((e) => errors.push(e));
+
+    if (hardErrors.length > 0) return;
+
+    // Soft warnings: imported as-is but flagged
+    if (category && !KNOWN_CATEGORIES.has(category)) {
+      errors.push({ row: rowNum, message: `Unknown category '${category}' — imported as-is`, field: 'category', value: category });
     }
+
+    rows.push({ date, type: type!, category, payee_payer, description, amount: amount!, currency });
   });
 
   return { rows, errors };

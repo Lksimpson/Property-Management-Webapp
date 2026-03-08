@@ -16,6 +16,23 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, message: 'Missing propertyId' }, { status: 400 });
     }
 
+    const supabase = createSupabaseServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return NextResponse.json({ ok: false, message: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { data: membership } = await supabase
+      .from('property_members')
+      .select('role')
+      .eq('property_id', propertyId)
+      .eq('user_id', user.id)
+      .single();
+
+    if (!membership || (membership.role !== 'owner' && membership.role !== 'manager')) {
+      return NextResponse.json({ ok: false, message: 'Forbidden' }, { status: 403 });
+    }
+
     const arrayBuffer = await file.arrayBuffer();
     const result = await parseAndValidateFile((file as any).name || 'upload.csv', arrayBuffer);
 
@@ -33,7 +50,6 @@ export async function POST(req: Request) {
     }
 
     // action === 'import' and validation passed => batch insert
-    const supabase = createSupabaseServerClient();
     // attach property_id and created_at
     const toInsert = result.rows.map((r) => ({
       property_id: propertyId,

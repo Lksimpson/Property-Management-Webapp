@@ -2,6 +2,8 @@ import Link from "next/link";
 import SignOutButton from "@/src/components/SignOutButton";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/src/lib/supabase/server";
+import { convertToUSD } from "@/src/lib/currency";
+import PortfolioTrendChart from "@/src/components/PortfolioTrendChart";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +11,7 @@ type Property = {
   id: string;
   name: string | null;
   address: string | null;
+  country: "JM" | "LC" | null;
 };
 
 type Transaction = {
@@ -16,9 +19,13 @@ type Transaction = {
   amount: number;
   type: "income" | "expense";
   currency: string | null;
+  date: string | null;
 };
 
-export default async function DashboardPage() {
+export default async function DashboardPage(props: {
+  searchParams: Promise<{ country?: string }>;
+}) {
+  const { country: countryFilter } = await props.searchParams;
   const supabase = createSupabaseServerClient();
   const {
     data: { user },
@@ -29,10 +36,16 @@ export default async function DashboardPage() {
   }
 
   // Fetch properties the current user has access to (RLS-enforced).
-  const { data: rawProperties } = await supabase
+  let propertiesQuery = supabase
     .from("properties")
-    .select("id, name, address")
+    .select("id, name, address, country")
     .order("created_at", { ascending: false });
+
+  if (countryFilter === "JM" || countryFilter === "LC") {
+    propertiesQuery = propertiesQuery.eq("country", countryFilter);
+  }
+
+  const { data: rawProperties } = await propertiesQuery;
 
   const properties: Property[] = rawProperties ?? [];
 
@@ -55,27 +68,13 @@ export default async function DashboardPage() {
     }
   });
 
-  // Convert amount from source currency to USD
-  const convertToUSD = (amount: number, fromCurrency: string): number => {
-    if (fromCurrency === "USD") return amount;
-
-    const toUsdKey = `${fromCurrency}-USD`;
-    const toUsdRate = rateMap.get(toUsdKey);
-    if (toUsdRate !== undefined) {
-      return amount * toUsdRate;
-    }
-
-    // If no rate found, return original amount (shouldn't happen, but fallback)
-    return amount;
-  };
-
-  // Fetch transactions for this month for all of the user's properties.
+  // Fetch transactions for the last 6 months across all of the user's properties.
   let totalIncome = 0;
   let totalExpenses = 0;
-  const propertyStats = new Map<
-    string,
-    { income: number; expenses: number }
-  >();
+  let lastMonthIncome = 0;
+  let lastMonthExpenses = 0;
+  const propertyStats = new Map<string, { income: number; expenses: number }>();
+  const portfolioMonthlyData: { month: string; monthLabel: string; net: number }[] = [];
 
   if (propertyIds.length > 0) {
     const now = new Date();
@@ -87,42 +86,70 @@ export default async function DashboardPage() {
       return `${y}-${m}-${day}`;
     }
 
-    const startOfMonth = formatLocalDate(
-      new Date(now.getFullYear(), now.getMonth(), 1)
-    );
-    const endOfMonth = formatLocalDate(
-      new Date(now.getFullYear(), now.getMonth() + 1, 0)
-    );
+    const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const lastMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonthKey = `${lastMonthDate.getFullYear()}-${String(lastMonthDate.getMonth() + 1).padStart(2, "0")}`;
 
-    const { data: transactions = [] } = await supabase
+    const sixMonthsAgo = formatLocalDate(new Date(now.getFullYear(), now.getMonth() - 5, 1));
+
+    const { data: allTx = [] } = await supabase
       .from("transactions")
-      .select("property_id, amount, type, currency")
+      .select("property_id, amount, type, currency, date")
       .in("property_id", propertyIds)
-      .gte("date", startOfMonth)
-      .lte("date", endOfMonth);
+      .gte("date", sixMonthsAgo);
 
-    for (const tx of transactions as Transaction[]) {
+    const monthlyMap = new Map<string, number>();
+
+    for (const tx of allTx as (Transaction & { date: string | null })[]) {
       const txCurrency = (tx.currency || "USD").toUpperCase();
-      const usdAmount = convertToUSD(Number(tx.amount), txCurrency);
+      const usdAmount = convertToUSD(Number(tx.amount), txCurrency, rateMap);
+      const sign = tx.type === "income" ? 1 : -1;
+      const txMonth = tx.date ? tx.date.slice(0, 7) : null;
 
-      // Initialize property stats if needed
       if (!propertyStats.has(tx.property_id)) {
         propertyStats.set(tx.property_id, { income: 0, expenses: 0 });
       }
 
-      const stats = propertyStats.get(tx.property_id)!;
-
-      if (tx.type === "income") {
-        totalIncome += usdAmount;
-        stats.income += usdAmount;
-      } else if (tx.type === "expense") {
-        totalExpenses += usdAmount;
-        stats.expenses += usdAmount;
+      if (txMonth === thisMonthKey) {
+        const stats = propertyStats.get(tx.property_id)!;
+        if (tx.type === "income") { totalIncome += usdAmount; stats.income += usdAmount; }
+        else { totalExpenses += usdAmount; stats.expenses += usdAmount; }
       }
+
+      if (txMonth === lastMonthKey) {
+        if (tx.type === "income") lastMonthIncome += usdAmount;
+        else lastMonthExpenses += usdAmount;
+      }
+
+      if (txMonth) {
+        monthlyMap.set(txMonth, (monthlyMap.get(txMonth) ?? 0) + sign * usdAmount);
+      }
+    }
+
+    // Build sorted 6-month portfolio trend
+    const sortedMonths = Array.from(monthlyMap.keys()).sort();
+    for (const month of sortedMonths) {
+      const [year, monthNum] = month.split("-");
+      const date = new Date(parseInt(year), parseInt(monthNum) - 1);
+      portfolioMonthlyData.push({
+        month,
+        monthLabel: date.toLocaleDateString("en-US", { month: "short" }),
+        net: monthlyMap.get(month)!,
+      });
     }
   }
 
   const netCashFlow = totalIncome - totalExpenses;
+  const lastMonthNet = lastMonthIncome - lastMonthExpenses;
+
+  function pctChange(current: number, previous: number): number | null {
+    if (previous === 0) return null;
+    return Math.round(((current - previous) / Math.abs(previous)) * 100);
+  }
+
+  const incomePct = pctChange(totalIncome, lastMonthIncome);
+  const expensesPct = pctChange(totalExpenses, lastMonthExpenses);
+  const netPct = pctChange(netCashFlow, lastMonthNet);
 
   const hasProperties = properties.length > 0;
 
@@ -169,6 +196,7 @@ export default async function DashboardPage() {
               icon="$"
               trendLabel="vs last month"
               positive
+              trendPct={incomePct}
             />
             <StatCard
               label="Total Expenses"
@@ -176,6 +204,7 @@ export default async function DashboardPage() {
               icon="−"
               trendLabel="vs last month"
               positive={false}
+              trendPct={expensesPct}
             />
             <StatCard
               label="Net Cash Flow"
@@ -183,6 +212,7 @@ export default async function DashboardPage() {
               icon="₵"
               trendLabel="vs last month"
               positive={netCashFlow >= 0}
+              trendPct={netPct}
             />
             <StatCard
               label="Properties"
@@ -195,12 +225,41 @@ export default async function DashboardPage() {
           </div>
         </section>
 
+        {/* Portfolio Trend */}
+        {portfolioMonthlyData.length > 0 && (
+          <section className="mt-10">
+            <PortfolioTrendChart monthlyData={portfolioMonthlyData} />
+          </section>
+        )}
+
         {/* Properties */}
         <section className="mt-10 flex-1">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <h2 className="text-base font-semibold text-slate-100">
-              Your Properties
-            </h2>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <h2 className="text-base font-semibold text-slate-100">
+                Your Properties
+              </h2>
+              <div className="flex items-center gap-1.5">
+                <Link
+                  href="/dashboard"
+                  className={`rounded-full px-3 py-1 text-xs border transition ${!countryFilter ? "bg-emerald-500/20 border-emerald-500/60 text-emerald-300" : "border-slate-700 text-slate-400 hover:border-slate-500"}`}
+                >
+                  All
+                </Link>
+                <Link
+                  href="/dashboard?country=JM"
+                  className={`rounded-full px-3 py-1 text-xs border transition ${countryFilter === "JM" ? "bg-emerald-500/20 border-emerald-500/60 text-emerald-300" : "border-slate-700 text-slate-400 hover:border-slate-500"}`}
+                >
+                  Jamaica
+                </Link>
+                <Link
+                  href="/dashboard?country=LC"
+                  className={`rounded-full px-3 py-1 text-xs border transition ${countryFilter === "LC" ? "bg-emerald-500/20 border-emerald-500/60 text-emerald-300" : "border-slate-700 text-slate-400 hover:border-slate-500"}`}
+                >
+                  St. Lucia
+                </Link>
+              </div>
+            </div>
             {hasProperties && (
               <Link
                 href="/properties/new"
@@ -236,6 +295,11 @@ export default async function DashboardPage() {
                         <p className="mt-1 line-clamp-2 text-xs text-slate-400">
                           {property.address}
                         </p>
+                      )}
+                      {property.country && (
+                        <span className="mt-1 inline-flex items-center rounded-full bg-slate-800/60 px-2 py-0.5 text-[0.65rem] font-medium text-slate-400 ring-1 ring-slate-700/60">
+                          {property.country === "JM" ? "Jamaica" : "St. Lucia"}
+                        </span>
                       )}
                       <div className="mt-4 flex items-center justify-between text-xs text-slate-400">
                         <div className="flex flex-col gap-1">
@@ -321,6 +385,7 @@ type StatCardProps = {
   trendLabel: string;
   positive: boolean;
   isCount?: boolean;
+  trendPct?: number | null;
 };
 
 function StatCard({
@@ -330,6 +395,7 @@ function StatCard({
   trendLabel,
   positive,
   isCount,
+  trendPct,
 }: StatCardProps) {
   const formattedValue = isCount
     ? value.toString()
@@ -338,6 +404,15 @@ function StatCard({
         currency: "USD",
         maximumFractionDigits: 0,
       });
+
+  // For expense cards, fewer expenses is good (negative pct = positive outcome)
+  const trendIsPositive =
+    trendPct == null ? positive : positive ? trendPct >= 0 : trendPct <= 0;
+
+  const trendText =
+    trendPct == null
+      ? `— ${trendLabel}`
+      : `${trendPct >= 0 ? "↑" : "↓"} ${Math.abs(trendPct)}% ${trendLabel}`;
 
   return (
     <div className="flex flex-col justify-between rounded-2xl border border-slate-800/80 bg-gradient-to-b from-slate-900/80 to-slate-950/80 p-4 shadow-lg shadow-black/40">
@@ -357,11 +432,10 @@ function StatCard({
       {trendLabel && (
         <p
           className={`mt-2 text-xs ${
-            positive ? "text-emerald-400" : "text-rose-400"
+            trendIsPositive ? "text-emerald-400" : "text-rose-400"
           }`}
         >
-          {/* Placeholder trend; can be wired to real comparisons later */}
-          {positive ? "↑" : "↓"} 0% {trendLabel}
+          {trendText}
         </p>
       )}
     </div>
